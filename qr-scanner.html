@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Scanner QR Material PE</title>
+<meta name="color-scheme" content="light">
+<style>
+:root{font-family:Arial,sans-serif;color:#172033;background:#f3f5f8}*{box-sizing:border-box}body{margin:0;padding:16px;max-width:620px;margin-inline:auto}.panel{background:#fff;border-radius:16px;padding:18px;box-shadow:0 6px 24px #10203a18}h1{font-size:22px;margin:0 0 8px}p{line-height:1.45;color:#5b6472}.status{padding:12px;border-radius:10px;background:#eef3f8;font-size:14px;line-height:1.45;margin:12px 0}#reader{width:100%;overflow:hidden;border-radius:12px}#reader video{object-fit:cover;border-radius:12px}.buttons{display:flex;gap:10px;margin-top:12px}button{border:0;border-radius:10px;padding:13px 16px;font-weight:700;font-size:15px;flex:1;background:#17365d;color:#fff}button.secondary{background:#e5e7eb;color:#172033}input{width:100%;padding:12px;border:1px solid #ccd2dc;border-radius:9px;font-size:16px;margin-top:8px}.small{font-size:12px;color:#687386}@media(min-width:500px){body{padding-top:28px}}
+</style>
+<script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+</head>
+<body>
+<div class="panel">
+<h1>Scan QR Code Material</h1>
+<p>Arahkan kamera ke QR pada label material. Setelah terbaca, ID material dikirim kembali ke halaman Material Management PE.</p>
+<div id="status" class="status" role="status">Memeriksa scanner…</div>
+<div id="reader"></div>
+<div class="buttons"><button id="startBtn" type="button">Buka Kamera</button><button id="stopBtn" class="secondary" type="button">Tutup Kamera</button></div>
+<p><strong>Alternatif:</strong> jika kamera tidak tersedia, masukkan ID material secara manual.</p>
+<input id="manualId" autocomplete="off" placeholder="Contoh: MAT-001">
+<div class="buttons"><button id="sendBtn" type="button">Kirim ID ke Aplikasi</button></div>
+<p class="small">Halaman ini perlu di-host di HTTPS. Izin kamera diberikan khusus untuk domain hosting scanner.</p>
+</div>
+<script>
+(function(){
+  'use strict';
+  var params = new URLSearchParams(location.search);
+  var session = params.get('session') || '';
+  var statusEl = document.getElementById('status');
+  var scanner = null;
+  var busy = false;
+  function status(msg){statusEl.textContent=msg;}
+  function sendValue(value){
+    value=String(value||'').trim();
+    if(!value){status('ID QR kosong.');return;}
+    if(!window.opener || window.opener.closed){status('Halaman aplikasi utama tidak ditemukan. Buka scanner melalui tombol Scan QR di aplikasi.');return;}
+    window.opener.postMessage({type:'MATERIAL_QR_SCANNED',session:session,value:value}, '*');
+    status('QR terbaca. ID dikirim ke aplikasi: '+value);
+    stopScanner().then(function(){setTimeout(function(){window.close();},500);});
+  }
+  function stopScanner(){
+    if(!scanner)return Promise.resolve();
+    var old=scanner;scanner=null;busy=false;
+    return old.stop().catch(function(){}).then(function(){try{old.clear();}catch(e){}});
+  }
+  function startScanner(){
+    if(busy)return;
+    if(!window.isSecureContext){status('Browser tidak menganggap halaman ini aman. Pastikan memakai HTTPS.');return;}
+    if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){status('API kamera tidak tersedia di halaman ini. Coba Chrome terbaru dan pastikan hosting HTTPS.');return;}
+    if(typeof Html5Qrcode==='undefined'){status('Library QR tidak termuat. Periksa koneksi internet lalu muat ulang.');return;}
+    busy=true;status('Meminta izin kamera…');
+    scanner=new Html5Qrcode('reader');
+    scanner.start({facingMode:'environment'},{fps:10,qrbox:function(w,h){var z=Math.max(150,Math.min(300,Math.floor(Math.min(w,h)*.72)));return{width:z,height:z};},aspectRatio:1},function(decoded){if(!busy)return;busy=false;sendValue(decoded);},function(){}).then(function(){status('Kamera aktif. Arahkan QR ke area scan.');}).catch(function(err){busy=false;scanner=null;var name=err&&err.name||'Error';var msg=err&&err.message||String(err||'Tidak ada detail');if(name==='NotAllowedError'||name==='PermissionDeniedError')status('Izin kamera ditolak. Tekan ikon pengaturan di alamat situs, izinkan Camera, lalu muat ulang. Detail: '+msg);else if(name==='NotFoundError')status('Kamera tidak ditemukan di perangkat.');else if(name==='NotReadableError')status('Kamera sedang digunakan aplikasi/tab lain. Tutup aplikasi kamera lain.');else status('Kamera gagal dibuka ('+name+'): '+msg);});
+  }
+  document.getElementById('startBtn').addEventListener('click',startScanner);
+  document.getElementById('stopBtn').addEventListener('click',function(){stopScanner().then(function(){status('Kamera ditutup.');});});
+  document.getElementById('sendBtn').addEventListener('click',function(){sendValue(document.getElementById('manualId').value);});
+  document.getElementById('manualId').addEventListener('keydown',function(e){if(e.key==='Enter')sendValue(this.value);});
+  window.addEventListener('beforeunload',function(){stopScanner();});
+  status(session?'Siap. Tekan Buka Kamera untuk mulai scan.':'Session tidak ditemukan. Buka halaman ini dari tombol Scan QR di aplikasi utama.');
+})();
+</script>
+</body>
+</html>
